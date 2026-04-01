@@ -21,6 +21,10 @@ const users: User[] = [
 ];
 const resetTokens: ResetToken[] = [];
 
+export function getAllUsers(): User[] {
+  return users;
+}
+
 export function findUserByEmail(email: string): User | undefined {
   return users.find((u) => u.email === email.toLowerCase());
 }
