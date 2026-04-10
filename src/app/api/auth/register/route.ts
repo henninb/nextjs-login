@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { registerSchema } from "@/lib/validations";
 import { findUserByEmail, createUser } from "@/lib/store";
-import { signToken, createTokenCookie } from "@/lib/auth";
 import { getClientKey, rateLimit } from "@/lib/rate-limit";
 import { logRouteError } from "@/lib/log";
 
@@ -33,23 +32,14 @@ export async function POST(request: Request) {
     const { email, password } = result.data;
 
     if (findUserByEmail(email)) {
-      // Same status/message shape as success without revealing enumeration; no session cookie.
-      return NextResponse.json(
-        { message: "Registration successful" },
-        { status: 201 }
-      );
+      return NextResponse.json({ message: "Registration successful" }, { status: 201 });
     }
 
     const passwordHash = await bcrypt.hash(password, 12);
-    const user = createUser(email, passwordHash);
-    const token = await signToken(user.id, user.email);
+    createUser(email, passwordHash);
 
-    const response = NextResponse.json(
-      { message: "Account created successfully", user: { id: user.id, email: user.email } },
-      { status: 201 }
-    );
-    response.cookies.set(createTokenCookie(token));
-    return response;
+    /* No session cookie: same response shape as duplicate email to prevent account enumeration. */
+    return NextResponse.json({ message: "Registration successful" }, { status: 201 });
   } catch (err) {
     logRouteError(ROUTE, err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

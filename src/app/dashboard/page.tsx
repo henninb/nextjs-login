@@ -115,9 +115,9 @@ export default function DashboardPage() {
         <div className="mt-8 rounded-xl border border-indigo-100 bg-indigo-50 p-6">
           <h3 className="font-medium text-indigo-900">This is a demo dashboard</h3>
           <p className="mt-1 text-sm text-indigo-700">
-            This page is protected by JWT authentication. Your token is stored in an
-            HTTP-only cookie called &quot;token&quot;. Try signing out and accessing this
-            page directly — you&apos;ll be redirected to the login page.
+            This page uses JWT authentication. Your session is stored in an HTTP-only
+            cookie named &quot;token&quot;. After you sign out, opening this URL redirects
+            you to sign in (edge middleware and a client check both enforce access).
           </p>
         </div>
       </main>

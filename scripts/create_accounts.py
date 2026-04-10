@@ -113,19 +113,22 @@ async def register_via_fetch(page: Page, email: str, password: str) -> Result:
                 body: JSON.stringify({ email, password, confirmPassword: password }),
             });
             const text = await res.text();
+            let body;
             try {
-                return { status: res.status, body: JSON.parse(text) };
+                body = JSON.parse(text);
             } catch {
                 return { status: res.status, body: { error: `PX block (HTTP ${res.status})` } };
             }
+            return { status: res.status, body };
         }""",
         [email, password],
     )
     status = resp["status"]
     body = resp["body"]
-    if status == 201:
+    if status == 201 and isinstance(body, dict) and not body.get("error"):
         return Result(email=email, success=True, detail=body.get("message", "ok"))
-    return Result(email=email, success=False, detail=body.get("error", str(body)))
+    err = body.get("error") if isinstance(body, dict) else None
+    return Result(email=email, success=False, detail=err or str(body))
 
 
 async def run(
@@ -228,8 +231,8 @@ def main():
         help="Number of accounts to create (default: 10)",
     )
     parser.add_argument(
-        "-u", "--url", default="https://www.bhenning.com",
-        help="Base URL of the app (default: https://www.bhenning.com)",
+        "-u", "--url", default="http://localhost:3000",
+        help="Base URL of the app (default: http://localhost:3000)",
     )
     parser.add_argument(
         "--prefix", default="testuser",

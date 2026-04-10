@@ -1,12 +1,14 @@
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 import { z } from "zod";
+import { findUserById } from "@/lib/store";
 
 const COOKIE_NAME = "token";
 
 const jwtPayloadSchema = z.object({
   sub: z.string().min(1),
   email: z.string().email(),
+  sv: z.number().int(),
   iat: z.number().optional(),
   exp: z.number(),
 });
@@ -25,34 +27,38 @@ function getJwtSecret(): Uint8Array {
   return new TextEncoder().encode("dev-only-placeholder-not-for-production");
 }
 
-const JWT_SECRET = getJwtSecret();
-
 export interface JWTPayload {
   sub: string;
   email: string;
+  sv: number;
   iat: number;
   exp: number;
 }
 
-export async function signToken(userId: string, email: string): Promise<string> {
-  return new SignJWT({ sub: userId, email })
+export async function signToken(
+  userId: string,
+  email: string,
+  sessionVersion: number
+): Promise<string> {
+  return new SignJWT({ sub: userId, email, sv: sessionVersion })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("7d")
-    .sign(JWT_SECRET);
+    .sign(getJwtSecret());
 }
 
 export async function verifyToken(token: string): Promise<JWTPayload | null> {
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET);
+    const { payload } = await jwtVerify(token, getJwtSecret());
     const parsed = jwtPayloadSchema.safeParse(payload);
     if (!parsed.success) {
       return null;
     }
-    const { sub, email, iat, exp } = parsed.data;
+    const { sub, email, sv, iat, exp } = parsed.data;
     return {
       sub,
       email,
+      sv,
       iat: iat ?? 0,
       exp,
     };
@@ -61,11 +67,20 @@ export async function verifyToken(token: string): Promise<JWTPayload | null> {
   }
 }
 
+/** Cryptographic JWT verification plus session version match (invalidates tokens after password change). */
+export async function validateSessionToken(token: string): Promise<JWTPayload | null> {
+  const payload = await verifyToken(token);
+  if (!payload) return null;
+  const user = findUserById(payload.sub);
+  if (!user || user.sessionVersion !== payload.sv) return null;
+  return payload;
+}
+
 export async function getSession(): Promise<JWTPayload | null> {
   const cookieStore = await cookies();
   const token = cookieStore.get(COOKIE_NAME)?.value;
   if (!token) return null;
-  return verifyToken(token);
+  return validateSessionToken(token);
 }
 
 export function createTokenCookie(token: string) {

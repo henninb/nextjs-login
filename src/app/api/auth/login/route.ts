@@ -6,6 +6,10 @@ import { signToken, createTokenCookie } from "@/lib/auth";
 import { getClientKey, rateLimit } from "@/lib/rate-limit";
 import { logRouteError } from "@/lib/log";
 
+/** Bcrypt hash of a dummy secret — compared when no user exists to reduce login timing leaks. */
+const DUMMY_PASSWORD_HASH =
+  "$2b$12$GTa3yqnWO4w6FPV5E66wM.DtC6vql2zVnajhqEOvRM3CtPnhCWKea";
+
 const ROUTE = "POST /api/auth/login";
 const WINDOW_MS = 15 * 60 * 1000;
 const MAX_PER_WINDOW = 20;
@@ -32,23 +36,17 @@ export async function POST(request: Request) {
 
     const { email, password } = result.data;
     const user = findUserByEmail(email);
+    const hashToCompare = user?.passwordHash ?? DUMMY_PASSWORD_HASH;
+    const passwordValid = await bcrypt.compare(password, hashToCompare);
 
-    if (!user) {
+    if (!user || !passwordValid) {
       return NextResponse.json(
         { error: "Invalid email or password" },
         { status: 401 }
       );
     }
 
-    const passwordValid = await bcrypt.compare(password, user.passwordHash);
-    if (!passwordValid) {
-      return NextResponse.json(
-        { error: "Invalid email or password" },
-        { status: 401 }
-      );
-    }
-
-    const token = await signToken(user.id, user.email);
+    const token = await signToken(user.id, user.email, user.sessionVersion);
 
     const response = NextResponse.json(
       { message: "Logged in successfully", user: { id: user.id, email: user.email } },

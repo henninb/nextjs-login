@@ -7,12 +7,30 @@ export const metadata: Metadata = {
   description: "Next.js authentication demo with JWT",
 };
 
+function isTrustedPerimeterScriptUrl(raw: string): boolean {
+  try {
+    const u = new URL(raw);
+    if (u.protocol !== "https:") return false;
+    const h = u.hostname.toLowerCase();
+    return h === "perimeterx.net" || h.endsWith(".perimeterx.net");
+  } catch {
+    return false;
+  }
+}
+
 export default function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const perimeterScript = process.env.NEXT_PUBLIC_PERIMETERX_SCRIPT_URL;
+  const raw = process.env.NEXT_PUBLIC_PERIMETERX_SCRIPT_URL;
+  const perimeterScript =
+    raw && isTrustedPerimeterScriptUrl(raw) ? raw : undefined;
+  if (raw && !perimeterScript) {
+    console.warn(
+      "[layout] NEXT_PUBLIC_PERIMETERX_SCRIPT_URL is set but not an https:// URL on a *.perimeterx.net host; script not loaded."
+    );
+  }
 
   return (
     <html lang="en" suppressHydrationWarning>

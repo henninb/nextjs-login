@@ -16,7 +16,6 @@ export default function RegisterPage() {
   const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
-  const [registeredWithoutSession, setRegisteredWithoutSession] = useState(false);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
@@ -29,7 +28,6 @@ export default function RegisterPage() {
     setLoading(true);
     setError("");
     setFieldErrors({});
-    setRegisteredWithoutSession(false);
 
     if (form.password !== form.confirmPassword) {
       setFieldErrors({ confirmPassword: "Passwords do not match" });
@@ -51,46 +49,14 @@ export default function RegisterPage() {
         return;
       }
 
-      if (data.user) {
-        router.push("/dashboard");
-        router.refresh();
-        return;
-      }
-
-      setRegisteredWithoutSession(true);
+      router.push("/login?registered=1");
+      router.refresh();
     } catch {
       setError("Something went wrong. Please try again.");
     } finally {
       setLoading(false);
     }
   };
-
-  if (registeredWithoutSession) {
-    return (
-      <AuthCard
-        title="Registration"
-        subtitle="You can continue with the link below"
-        footer={
-          <Link href="/login" className="font-medium text-indigo-600 hover:text-indigo-500">
-            Back to sign in
-          </Link>
-        }
-      >
-        <div className="space-y-4 text-center text-sm text-gray-600">
-          <p>
-            If a new account was created, you would be signed in automatically. You can try signing
-            in with your email and password.
-          </p>
-          <Link
-            href="/login"
-            className="inline-block rounded-lg bg-indigo-600 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500"
-          >
-            Sign in
-          </Link>
-        </div>
-      </AuthCard>
-    );
-  }
 
   return (
     <AuthCard
