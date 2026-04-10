@@ -3,8 +3,22 @@ import bcrypt from "bcryptjs";
 import { loginSchema } from "@/lib/validations";
 import { findUserByEmail } from "@/lib/store";
 import { signToken, createTokenCookie } from "@/lib/auth";
+import { getClientKey, rateLimit } from "@/lib/rate-limit";
+import { logRouteError } from "@/lib/log";
+
+const ROUTE = "POST /api/auth/login";
+const WINDOW_MS = 15 * 60 * 1000;
+const MAX_PER_WINDOW = 20;
 
 export async function POST(request: Request) {
+  const limited = rateLimit(`login:${getClientKey(request)}`, MAX_PER_WINDOW, WINDOW_MS);
+  if (!limited.ok) {
+    return NextResponse.json(
+      { error: "Too many requests. Try again later." },
+      { status: 429, headers: { "Retry-After": String(limited.retryAfterSec) } }
+    );
+  }
+
   try {
     const body = await request.json();
     const result = loginSchema.safeParse(body);
@@ -42,7 +56,8 @@ export async function POST(request: Request) {
     );
     response.cookies.set(createTokenCookie(token));
     return response;
-  } catch {
+  } catch (err) {
+    logRouteError(ROUTE, err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

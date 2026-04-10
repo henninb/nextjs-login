@@ -1,7 +1,26 @@
 #!/usr/bin/env python3
-"""Bulk account creation via Playwright. Opens one page, lets the PX sensor
-establish trust, then calls the register API from within the page context.
-Applies stealth patches to avoid headless detection."""
+"""Bulk account creation via Playwright.
+
+Opens one page, lets the PX sensor establish trust, then calls the register API
+from within the page context. Applies stealth patches to avoid headless detection.
+
+Setup (use a venv; macOS/Homebrew Python blocks global pip installs)
+
+    cd scripts
+    python3 -m venv .venv
+    source .venv/bin/activate
+    pip install -r requirements.txt
+    playwright install chromium
+
+    Google Chrome must be installed (the script launches Chromium via channel="chrome").
+
+Usage
+
+    .venv/bin/python create_accounts.py
+    .venv/bin/python create_accounts.py -n 5 -u https://localhost:3000 --prefix qa --domain example.com
+    .venv/bin/python create_accounts.py --headed -u https://www.example.com   # if PX blocks headless
+    .venv/bin/python create_accounts.py -h
+"""
 
 import argparse
 import asyncio
@@ -9,7 +28,7 @@ import random
 import string
 import time
 from dataclasses import dataclass
-from playwright.async_api import async_playwright, Page
+from playwright.async_api import Page, TimeoutError as PlaywrightTimeoutError, async_playwright
 
 
 @dataclass
@@ -21,6 +40,7 @@ class Result:
 
 DEFAULT_PASSWORD = "TestPass1"
 SETTLE_SECONDS = 8
+FORM_WAIT_SECONDS = 45
 
 STEALTH_JS = """
 Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
@@ -41,6 +61,46 @@ window.navigator.permissions.query = (parameters) =>
 
 window.chrome = { runtime: {} };
 """
+
+
+async def is_px_or_block_page(page: Page) -> bool:
+    """True when PerimeterX (or similar) served a block/captcha page instead of the app."""
+    return await page.evaluate(
+        """() => {
+            const t = (document.title || '').toLowerCase();
+            if (t.includes('access to this page has been denied')) return true;
+            if (t.includes('just a moment') || t.includes('attention required')) return true;
+            const meta = document.querySelector('meta[name="description"]');
+            if (meta && (meta.getAttribute('content') || '').toLowerCase() === 'px-captcha')
+                return true;
+            if (document.querySelector('#px-captcha-modal')) return true;
+            const body = document.body;
+            if (body && body.innerText && body.innerText.includes('Press & Hold')) return true;
+            return false;
+        }"""
+    )
+
+
+async def wait_for_register_form(page: Page) -> None:
+    """Wait until the email field is visible, or fail with a clear error if PX blocks."""
+    deadline = time.monotonic() + FORM_WAIT_SECONDS
+    email_sel = 'input[name="email"], input#email, [type="email"]'
+    while time.monotonic() < deadline:
+        if await is_px_or_block_page(page):
+            raise RuntimeError(
+                "PerimeterX (or a bot wall) blocked this page before the register form appeared. "
+                "Headless automation often gets 403/captcha on production. "
+                "Try: --headed, use http://localhost:3000 for local testing, or adjust PX for trusted IPs."
+            )
+        try:
+            await page.wait_for_selector(email_sel, state="visible", timeout=500)
+            return
+        except PlaywrightTimeoutError:
+            await asyncio.sleep(0.5)
+    raise RuntimeError(
+        f"Register form did not become visible within {FORM_WAIT_SECONDS}s "
+        f"(selector: {email_sel!r}). Check the URL, network, and whether the app is up."
+    )
 
 
 async def register_via_fetch(page: Page, email: str, password: str) -> Result:
@@ -68,7 +128,15 @@ async def register_via_fetch(page: Page, email: str, password: str) -> Result:
     return Result(email=email, success=False, detail=body.get("error", str(body)))
 
 
-async def run(base_url: str, count: int, prefix: str, domain: str, password: str, delay: float):
+async def run(
+    base_url: str,
+    count: int,
+    prefix: str,
+    domain: str,
+    password: str,
+    delay: float,
+    headed: bool,
+):
     def rand_suffix():
         return "".join(random.choices(string.ascii_lowercase + string.digits, k=6))
 
@@ -77,7 +145,7 @@ async def run(base_url: str, count: int, prefix: str, domain: str, password: str
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(
-            headless=True,
+            headless=not headed,
             channel="chrome",
             args=[
                 "--disable-blink-features=AutomationControlled",
@@ -101,8 +169,8 @@ async def run(base_url: str, count: int, prefix: str, domain: str, password: str
         page = await context.new_page()
 
         print(f"Loading {base_url}/register and waiting {SETTLE_SECONDS}s for PX sensor...")
-        await page.goto(f"{base_url}/register", wait_until="domcontentloaded", timeout=60000)
-        await page.wait_for_selector("#email", state="visible", timeout=30000)
+        await page.goto(f"{base_url}/register", wait_until="load", timeout=60000)
+        await wait_for_register_form(page)
         await asyncio.sleep(SETTLE_SECONDS)
 
         # Verify PX isn't blocking the page
@@ -147,7 +215,13 @@ async def run(base_url: str, count: int, prefix: str, domain: str, password: str
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Create test accounts in bulk using a real browser (Playwright)."
+        description="Create test accounts in bulk using a real browser (Playwright).",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""Examples:
+  %(prog)s
+  %(prog)s -n 25 -u https://localhost:3000
+  %(prog)s --prefix loadtest --domain mydomain.test --password 'MySecret1' -d 2.0
+""",
     )
     parser.add_argument(
         "-n", "--count", type=int, default=10,
@@ -173,13 +247,28 @@ def main():
         "-d", "--delay", type=float, default=1.0,
         help="Seconds between each account (default: 1.0)",
     )
+    parser.add_argument(
+        "--headed",
+        action="store_true",
+        help="Run Chrome visibly (not headless). Often needed when PerimeterX blocks headless clients.",
+    )
     args = parser.parse_args()
 
     print(f"Creating {args.count} accounts on {args.url}")
     print(f"Email pattern: {args.prefix}<N>@{args.domain}")
     print(f"Delay: ~{args.delay}s between requests\n")
 
-    asyncio.run(run(args.url, args.count, args.prefix, args.domain, args.password, args.delay))
+    asyncio.run(
+        run(
+            args.url,
+            args.count,
+            args.prefix,
+            args.domain,
+            args.password,
+            args.delay,
+            args.headed,
+        )
+    )
 
 
 if __name__ == "__main__":

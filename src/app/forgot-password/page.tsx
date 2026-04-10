@@ -10,11 +10,13 @@ export default function ForgotPasswordPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [devResetUrl, setDevResetUrl] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError("");
+    setDevResetUrl(null);
 
     try {
       const res = await fetch("/api/auth/forgot-password", {
@@ -31,6 +33,9 @@ export default function ForgotPasswordPage() {
       }
 
       setSuccess(true);
+      if (typeof data.devResetUrl === "string") {
+        setDevResetUrl(data.devResetUrl);
+      }
     } catch {
       setError("Something went wrong. Please try again.");
     } finally {
@@ -52,7 +57,20 @@ export default function ForgotPasswordPage() {
         <div className="space-y-4 text-center">
           <div className="rounded-lg bg-green-50 p-4 text-sm text-green-700">
             If an account exists with that email, a reset link has been sent.
-            Check your server console for the demo link.
+            {devResetUrl ? (
+              <p className="mt-3 text-left break-all">
+                <span className="font-medium">Local dev:</span>{" "}
+                <a href={devResetUrl} className="text-indigo-700 underline">
+                  Open reset link
+                </a>
+              </p>
+            ) : (
+              <p className="mt-3 text-left text-green-800">
+                In production, you would receive an email. For local testing only, set{" "}
+                <code className="rounded bg-green-100 px-1">DEV_RETURN_RESET_TOKEN=1</code> to
+                receive a link in this response.
+              </p>
+            )}
           </div>
           <Link
             href="/login"

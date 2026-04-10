@@ -12,10 +12,14 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const perimeterScript = process.env.NEXT_PUBLIC_PERIMETERX_SCRIPT_URL;
+
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        <Script src="//client.px-cloud.net/PXjJ0cYtn9/main.min.js" strategy="beforeInteractive" />
+        {perimeterScript ? (
+          <Script src={perimeterScript} strategy="beforeInteractive" />
+        ) : null}
       </head>
       <body className="min-h-screen bg-gray-50 text-gray-900 antialiased">
         {children}

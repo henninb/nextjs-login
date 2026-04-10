@@ -3,8 +3,22 @@ import bcrypt from "bcryptjs";
 import { registerSchema } from "@/lib/validations";
 import { findUserByEmail, createUser } from "@/lib/store";
 import { signToken, createTokenCookie } from "@/lib/auth";
+import { getClientKey, rateLimit } from "@/lib/rate-limit";
+import { logRouteError } from "@/lib/log";
+
+const ROUTE = "POST /api/auth/register";
+const WINDOW_MS = 15 * 60 * 1000;
+const MAX_PER_WINDOW = 10;
 
 export async function POST(request: Request) {
+  const limited = rateLimit(`register:${getClientKey(request)}`, MAX_PER_WINDOW, WINDOW_MS);
+  if (!limited.ok) {
+    return NextResponse.json(
+      { error: "Too many requests. Try again later." },
+      { status: 429, headers: { "Retry-After": String(limited.retryAfterSec) } }
+    );
+  }
+
   try {
     const body = await request.json();
     const result = registerSchema.safeParse(body);
@@ -19,9 +33,10 @@ export async function POST(request: Request) {
     const { email, password } = result.data;
 
     if (findUserByEmail(email)) {
+      // Same status/message shape as success without revealing enumeration; no session cookie.
       return NextResponse.json(
-        { error: "An account with this email already exists" },
-        { status: 409 }
+        { message: "Registration successful" },
+        { status: 201 }
       );
     }
 
@@ -35,7 +50,8 @@ export async function POST(request: Request) {
     );
     response.cookies.set(createTokenCookie(token));
     return response;
-  } catch {
+  } catch (err) {
+    logRouteError(ROUTE, err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

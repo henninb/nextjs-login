@@ -14,7 +14,7 @@ export interface ResetToken {
 const users: User[] = [
   {
     id: "seed-0001",
-    email: "henninb@gmail.com",
+    email: "demo@example.com",
     passwordHash: "$2b$12$38ZSm36tAlB4nBEAqpHlEu5ED4clc9rJ1xFmJt5BWQP9npT6t49.O",
     createdAt: new Date("2026-01-01T00:00:00Z"),
   },

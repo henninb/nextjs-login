@@ -13,6 +13,7 @@ export default function DashboardPage() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [logoutError, setLogoutError] = useState("");
 
   useEffect(() => {
     fetch("/api/auth/me")
@@ -26,9 +27,18 @@ export default function DashboardPage() {
   }, [router]);
 
   const handleLogout = async () => {
-    await fetch("/api/auth/logout", { method: "POST" });
-    router.push("/login");
-    router.refresh();
+    setLogoutError("");
+    try {
+      const res = await fetch("/api/auth/logout", { method: "POST" });
+      if (!res.ok) {
+        setLogoutError("Could not sign out. Please try again.");
+        return;
+      }
+      router.push("/login");
+      router.refresh();
+    } catch {
+      setLogoutError("Could not sign out. Please try again.");
+    }
   };
 
   if (loading) {
@@ -47,6 +57,7 @@ export default function DashboardPage() {
           <div className="flex items-center gap-4">
             <span className="text-sm text-gray-500">{user?.email}</span>
             <button
+              type="button"
               onClick={handleLogout}
               className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50"
             >
@@ -55,6 +66,14 @@ export default function DashboardPage() {
           </div>
         </div>
       </nav>
+
+      {logoutError && (
+        <div className="mx-auto max-w-5xl px-4 pt-4">
+          <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700" role="alert">
+            {logoutError}
+          </div>
+        </div>
+      )}
 
       <main className="mx-auto max-w-5xl px-4 py-12">
         <div className="mb-8">
